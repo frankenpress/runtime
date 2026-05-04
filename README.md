@@ -3,6 +3,8 @@
 **FrankenPress runtime image** — the base container image for the FrankenPress
 stack.
 
+**Documentation:** <https://docs.frankenpress.com/components/fp-runtime>
+
 FrankenPress is an opinionated, minimal way to run WordPress at scale on
 Kubernetes: **Caddy + FrankenPHP** for the web server and PHP runtime, **Souin**
 (via [`caddyserver/cache-handler`](https://github.com/caddyserver/cache-handler))
