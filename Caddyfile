@@ -1,0 +1,73 @@
+# FrankenPress runtime Caddyfile — Phase 0 spike.
+#
+# Goals demonstrated here:
+#   - FrankenPHP serving WordPress-style entry points
+#   - .php whitelist (only WP entry points may execute PHP)
+#   - /healthz endpoint for liveness probes
+#   - Souin (via caddyserver/cache-handler) caching GET responses
+#   - Tag-based invalidation via Surrogate-Key
+#   - /metrics on a separate listener (port 9145)
+
+{
+	# Bind admin to localhost only.
+	admin localhost:2019
+
+	# Disable automatic HTTPS for local dev; consumers run TLS at the gateway.
+	auto_https off
+
+	# Souin global config.
+	# Redis is the canonical distributed backend (memcached is not supported by Souin).
+	cache {
+		ttl 5m
+		stale 1h
+		mode bypass
+		redis {
+			url {$REDIS_URL:redis:6379}
+		}
+		cdn {
+			strategy hard
+		}
+		# Surrogate-Keys are emitted by the upstream PHP app; Souin groups
+		# cache entries by these keys so the mu-plugin can PURGE by tag.
+		default_cache_control "public, s-maxage=300"
+	}
+
+	servers {
+		metrics
+	}
+}
+
+:8080 {
+	root * /app/web
+
+	encode zstd br gzip
+
+	# /healthz — liveness probe target. Cheap, no PHP.
+	@healthz path /healthz
+	respond @healthz "ok" 200 {
+		close
+	}
+
+	# .php whitelist: only the WP entry points (index.php, wp-login.php, wp-cron.php,
+	# wp-admin/*.php) may execute PHP. Anything else returning 404 prevents
+	# user-uploaded .php from being executed even if it lands in the docroot.
+	@bad_php {
+		path *.php
+		not path /index.php /wp-login.php /wp-cron.php /wp-admin/*.php /wp/wp-login.php /wp/wp-cron.php /wp/wp-admin/*.php /wp/index.php
+	}
+	respond @bad_php 404
+
+	# Souin cache directive — caches GET responses based on Cache-Control + Surrogate-Key.
+	cache
+
+	# WP rewrites: try the file, then directory, then route to index.php.
+	try_files {path} {path}/ /index.php?{query}
+
+	php_server
+}
+
+# Prometheus metrics on a dedicated port so it can be scraped without traversing
+# the cache layer.
+:9145 {
+	metrics /metrics
+}
