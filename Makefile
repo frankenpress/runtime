@@ -13,7 +13,7 @@
 IMAGE ?= fp-runtime:dev
 PHP_VERSION ?= 8.3
 FRANKENPHP_VERSION ?= 1.12.2
-FP_MU_PLUGIN_VERSION ?=
+FP_MU_PLUGIN_VERSION ?= v0.1.0
 
 # Pass-through to docker compose. Override the image used by the compose stack
 # by exporting FP_RUNTIME_IMAGE before invoking make.
