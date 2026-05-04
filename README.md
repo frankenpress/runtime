@@ -35,7 +35,7 @@ extends. CI builds a multi-arch manifest list (`linux/amd64` +
 | darkweak/storages/go-redis/caddy | `v0.0.19` | Redis storage backend for Souin |
 | dunglas/caddy-cbrotli | `v1.0.1` | Brotli encoding |
 | WP-CLI | `2.12.0` | Cron + admin tasks |
-| Composer | bundled | Composer 2.x from FrankenPHP base |
+| Composer | not installed | The runtime image is for serving traffic, not building. Install Composer in your site's build stage (or one-shot via `curl -fsSL https://getcomposer.org/installer \| php`) when you need it |
 | PHP extensions | `gd intl exif zip opcache mysqli pdo_mysql memcached redis` | WP-friendly set |
 | fp-mu-plugin | optional | Bake at build time via `FP_MU_PLUGIN_VERSION` (defaults to skip) |
 
