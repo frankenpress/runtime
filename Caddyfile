@@ -1,72 +1,64 @@
-# FrankenPress runtime Caddyfile — Phase 0 spike.
+# FrankenPress runtime Caddyfile.
 #
-# Goals demonstrated here:
-#   - FrankenPHP serving WordPress-style entry points
-#   - .php whitelist (only WP entry points may execute PHP)
-#   - /healthz endpoint for liveness probes
-#   - Souin (via caddyserver/cache-handler) caching GET responses
-#   - Tag-based invalidation via Surrogate-Key
-#   - /metrics on a separate listener (port 9145)
+# Env vars (with defaults — override at container start):
+#   REDIS_URL                redis backing store for Souin (default: redis:6379)
+#   FP_CACHE_TTL             cache entry TTL                  (default: 5m)
+#   FP_CACHE_STALE           stale-while-revalidate window    (default: 1h)
+#   FP_CACHE_DEFAULT_CONTROL upstream Cache-Control fallback  (default: public, s-maxage=300)
+#   FP_DOCROOT               WordPress webroot                (default: /app/web)
+#   FP_PORT                  public HTTP listen port          (default: 8080)
+#   FP_METRICS_PORT          Prometheus metrics listen port   (default: 9145)
+#
+# Invalidation:
+#   The fp-mu-plugin's SouinInvalidator deletes cache entries directly in Redis
+#   using the documented key format (GET-<scheme>-<host>-<path>, IDX_<...>,
+#   SURROGATE_<tag>). Souin's HTTP invalidation APIs (PURGE / POST-CRUD /
+#   /api.souin admin) are unreliable in cache-handler v0.16.0 — see PHASE-0.md.
 
 {
-	# Bind admin to localhost only.
 	admin localhost:2019
-
-	# Disable automatic HTTPS for local dev; consumers run TLS at the gateway.
 	auto_https off
-
-	# Top-level metrics global option (servers { metrics } is deprecated).
 	metrics
 
-	# Souin global config.
-	# Redis is the canonical distributed backend (memcached is not supported by Souin).
-	# The 'api' block exposes the surrogate-key invalidation endpoint that the
-	# mu-plugin's SouinInvalidator will hit on post save. Cache-handler v0.16.0
-	# requires explicit basepaths on both the api and souin sub-block — without
-	# them the api registers with empty paths and never intercepts requests.
 	cache {
-		# Allow the methods Souin needs for both caching (GET/HEAD) and
-		# CRUD-based invalidation (POST/PUT/PATCH/DELETE drop the matching
-		# GET cache entry) plus PURGE for surrogate-key invalidation via
-		# the admin API. Default is GET-only — without this PURGE returns
-		# UNSUPPORTED-METHOD.
-		allowed_http_verbs GET HEAD POST PUT PATCH DELETE PURGE
+		# GET/HEAD only. Adding POST/PUT/etc. causes cache-handler to cache
+		# write responses themselves rather than invalidating GETs (verified
+		# behaviour in v0.16.0). Invalidation goes through direct Redis DEL
+		# from the fp-mu-plugin.
+		allowed_http_verbs GET HEAD
 
-		api {
-			basepath /souin-api
-			souin {
-				basepath /
-			}
-		}
-		ttl 5m
-		stale 1h
+		ttl {$FP_CACHE_TTL:5m}
+		stale {$FP_CACHE_STALE:1h}
 		mode bypass
+
 		redis {
 			url {$REDIS_URL:redis:6379}
 		}
+
 		cdn {
 			strategy hard
 		}
-		# Surrogate-Keys are emitted by the upstream PHP app; Souin groups
-		# cache entries by these keys so the mu-plugin can invalidate by tag.
-		default_cache_control "public, s-maxage=300"
+
+		# Upstream may override per-response with Cache-Control headers.
+		default_cache_control "{$FP_CACHE_DEFAULT_CONTROL:public, s-maxage=300}"
 	}
 }
 
-:8080 {
-	root * /app/web
+:{$FP_PORT:8080} {
+	root * {$FP_DOCROOT:/app/web}
 
 	encode zstd br gzip
 
-	# /healthz — liveness probe target. Cheap, no PHP.
+	# /healthz — cheap liveness probe target (no PHP, no cache).
 	@healthz path /healthz
 
-	# .php whitelist: only the WP entry points (index.php, wp-login.php, wp-cron.php,
-	# wp-admin/*.php) may execute PHP. Anything else returning 404 prevents
-	# user-uploaded .php from being executed even if it lands in the docroot.
+	# .php whitelist: only WordPress entry points may execute PHP. Defends
+	# against malicious uploads landing in the docroot. WP entry-point list
+	# is conservative; extend per-site if a plugin needs additional ones
+	# (e.g. wp-comments-post.php, xmlrpc.php for legacy clients).
 	@bad_php {
 		path *.php
-		not path /index.php /wp-login.php /wp-cron.php /wp-admin/*.php /wp/wp-login.php /wp/wp-cron.php /wp/wp-admin/*.php /wp/index.php
+		not path /index.php /wp-login.php /wp-cron.php /wp-admin/*.php /wp/index.php /wp/wp-login.php /wp/wp-cron.php /wp/wp-admin/*.php
 	}
 
 	# Mutually-exclusive handle blocks — first match wins, regardless of
@@ -79,28 +71,14 @@
 		respond 404
 	}
 
-	# Souin admin/invalidation API. Must be a separate handle so the cache
-	# directive intercepts the path without falling through to php_server.
-	handle /souin-api/* {
-		cache
-		# Fallback if the cache directive somehow doesn't intercept — makes
-		# misconfiguration loud rather than silently serving the test app.
-		respond "souin api not registered" 503
-	}
-
 	handle {
-		# Souin cache — caches GET responses based on Cache-Control + Surrogate-Key.
 		cache
-
-		# WP rewrites: try the file, then directory, then route to index.php.
 		try_files {path} {path}/ /index.php?{query}
-
 		php_server
 	}
 }
 
-# Prometheus metrics on a dedicated port so it can be scraped without traversing
-# the cache layer.
-:9145 {
+# Prometheus metrics on a dedicated port so scrapers don't traverse cache or PHP.
+:{$FP_METRICS_PORT:9145} {
 	metrics /metrics
 }

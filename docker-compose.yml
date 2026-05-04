@@ -1,21 +1,28 @@
-# FrankenPress runtime — Phase 0 spike harness.
+# FrankenPress runtime — local dev + CI harness.
 #
-# Brings up the runtime container + Redis (Souin backend).
-# Run with:
-#   docker compose up --build
-# Then exercise the cache:
+# Brings up the runtime container + Redis (Souin's HTTP cache backend).
+#
+# Local dev:
+#   docker compose up --build           # builds the image as fp-runtime:dev
+#   ./tests/cache-spike.sh              # exercises the cache
+#
+# CI / re-using a pre-built image:
+#   docker build -t fp-runtime:test .
+#   FP_RUNTIME_IMAGE=fp-runtime:test docker compose up -d
 #   ./tests/cache-spike.sh
+#
+# Override env vars to tune the cache or change ports — see the Caddyfile
+# header for the full list.
 
 services:
   runtime:
     build: .
-    image: fp-runtime:spike
+    image: ${FP_RUNTIME_IMAGE:-fp-runtime:dev}
     ports:
       - "8080:8080"   # http
       - "9145:9145"   # metrics
     environment:
       REDIS_URL: redis:6379
-      SERVER_NAME: ":8080"
     depends_on:
       redis:
         condition: service_healthy

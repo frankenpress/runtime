@@ -1,0 +1,16 @@
+.git
+.github
+.dockerignore
+Makefile
+README.md
+PHASE-*.md
+tests/
+docker-compose.yml
+docker-compose.*.yml
+*.md
+.DS_Store
+*.log
+node_modules/
+vendor/
+.env
+.env.local
