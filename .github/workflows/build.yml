@@ -16,24 +16,108 @@ permissions:
   contents: read
   packages: write
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      IMAGE: fp-runtime
-      REGISTRY: ghcr.io/eightoeight/fp-runtime
+env:
+  REGISTRY: ghcr.io/eightoeight/fp-runtime
 
+jobs:
+  # Build amd64 + arm64 in parallel on native runners. xcaddy's CGO
+  # compile is the bottleneck (~3 min native, ~25 min under QEMU
+  # emulation), so each arch gets its own runner of the matching arch.
+  # Each job:
+  #   - builds the image and runs the cache-spike integration test
+  #     against its own arch (catches arch-specific bugs in the
+  #     Caddyfile / FrankenPHP / Souin pinning)
+  #   - pushes by digest only (tags are assembled in the merge job)
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    outputs:
+      digest_amd64: ${{ steps.export.outputs.digest_amd64 }}
+      digest_arm64: ${{ steps.export.outputs.digest_arm64 }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/arm64
 
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (load locally for testing)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: fp-runtime:test
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
+            SOURCE_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+
+      - name: Run cache-spike integration test
+        env:
+          FP_RUNTIME_IMAGE: fp-runtime:test
+        run: |
+          docker compose up -d
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          ./tests/cache-spike.sh
+          docker compose down -v
+
+      - name: Push by digest
+        if: github.event_name != 'pull_request'
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: ${{ matrix.platform }}
+          # Push without tags; only the manifest digest is recorded.
+          # The merge job stitches both digests together under the real tags.
+          outputs: type=image,name=${{ env.REGISTRY }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
+            SOURCE_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+      - name: Export digest as job output
+        if: github.event_name != 'pull_request'
+        id: export
+        run: |
+          set -euo pipefail
+          digest="${{ steps.push.outputs.digest }}"
+          echo "digest_${{ matrix.arch }}=${digest}" >>"$GITHUB_OUTPUT"
+
+  merge:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -46,62 +130,25 @@ jobs:
           set -euo pipefail
           SHORT_SHA="$(git rev-parse --short HEAD)"
           TAGS=()
-          # Always tag with the commit SHA for traceability.
           TAGS+=("${REGISTRY}:php8.3-${SHORT_SHA}")
-          # On main, also tag as the rolling php8.3 channel.
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             TAGS+=("${REGISTRY}:php8.3")
           fi
-          # On a tag push (vX.Y.Z), publish that exact tag.
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VTAG="${GITHUB_REF#refs/tags/}"
             TAGS+=("${REGISTRY}:${VTAG}")
             TAGS+=("${REGISTRY}:php8.3-${VTAG}")
           fi
-          # Join with newlines for the docker/build-push-action.
-          printf 'tags<<EOF\n%s\nEOF\n' "$(IFS=$'\n'; echo "${TAGS[*]}")" >>"$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >>"$GITHUB_OUTPUT"
+          # Emit -t flags for buildx imagetools.
+          TAG_ARGS=$(printf -- ' -t %s' "${TAGS[@]}")
+          echo "tag_args=${TAG_ARGS}" >>"$GITHUB_OUTPUT"
 
-      - name: Build (load locally for testing)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: fp-runtime:test
-          build-args: |
-            FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
-            SOURCE_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.updated_at }}
-
-      - name: Run cache-spike integration test
-        env:
-          FP_RUNTIME_IMAGE: fp-runtime:test
+      - name: Create + push manifest list
         run: |
-          docker compose up -d
-          # Wait for healthcheck.
-          for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
-              break
-            fi
-            sleep 1
-          done
-          ./tests/cache-spike.sh
-          docker compose down -v
-
-      - name: Push (multi-arch, multi-tag)
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          # arm64 build runs under QEMU emulation. xcaddy's CGO compile
-          # under emulation is the bottleneck (~2-3× slower); a future
-          # optimisation is to split into native runners.
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: |
-            FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
-            SOURCE_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.updated_at }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          set -euo pipefail
+          AMD64_DIGEST="${{ needs.build.outputs.digest_amd64 }}"
+          ARM64_DIGEST="${{ needs.build.outputs.digest_arm64 }}"
+          docker buildx imagetools create \
+            ${{ steps.tags.outputs.tag_args }} \
+            "${REGISTRY}@${AMD64_DIGEST}" \
+            "${REGISTRY}@${ARM64_DIGEST}"
