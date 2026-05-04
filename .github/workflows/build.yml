@@ -18,20 +18,28 @@ permissions:
 
 env:
   REGISTRY: ghcr.io/eightoeight/fp-runtime
+  # The default PHP gets the unprefixed `:v<W.Z>` release tag in addition
+  # to its own `:php<X.Y>-v<W.Z>`. Bumping this is a deliberate decision
+  # — see .aidocs/php-wp-runtime-matrix.md.
+  DEFAULT_PHP: "8.3"
 
 jobs:
-  # Build amd64 + arm64 in parallel on native runners. xcaddy's CGO
-  # compile is the bottleneck (~3 min native, ~25 min under QEMU
-  # emulation), so each arch gets its own runner of the matching arch.
-  # Each job:
+  # Build the supported PHP × arch matrix. xcaddy's CGO compile is the
+  # bottleneck (~3 min native, ~25 min under QEMU emulation), so each
+  # arch gets its own native runner; PHP minors fan out as parallel
+  # legs on each. Each leg:
   #   - builds the image and runs the cache-spike integration test
-  #     against its own arch (catches arch-specific bugs in the
-  #     Caddyfile / FrankenPHP / Souin pinning)
-  #   - pushes by digest only (tags are assembled in the merge job)
+  #     against its own (php, arch) combo
+  #   - pushes by digest only (tags are assembled in the per-PHP merge
+  #     job)
+  #   - uploads its digest as an artifact named
+  #     `digest-php<X.Y>-<arch>` for the merge job to consume
   build:
     strategy:
       fail-fast: false
       matrix:
+        php: ["8.3", "8.4", "8.5"]
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-latest
@@ -40,9 +48,6 @@ jobs:
             runner: ubuntu-24.04-arm
             platform: linux/arm64
     runs-on: ${{ matrix.runner }}
-    outputs:
-      digest_amd64: ${{ steps.export.outputs.digest_amd64 }}
-      digest_arm64: ${{ steps.export.outputs.digest_arm64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,6 +69,7 @@ jobs:
           tags: fp-runtime:test
           platforms: ${{ matrix.platform }}
           build-args: |
+            PHP_VERSION=${{ matrix.php }}
             FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
             SOURCE_COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
@@ -91,26 +97,42 @@ jobs:
           push: true
           platforms: ${{ matrix.platform }}
           # Push without tags; only the manifest digest is recorded.
-          # The merge job stitches both digests together under the real tags.
+          # The per-PHP merge job stitches arch digests into a manifest
+          # list under the real tags.
           outputs: type=image,name=${{ env.REGISTRY }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
+            PHP_VERSION=${{ matrix.php }}
             FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
             SOURCE_COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+          cache-from: type=gha,scope=php${{ matrix.php }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=php${{ matrix.php }}-${{ matrix.arch }},mode=max
 
-      - name: Export digest as job output
+      - name: Stash digest as artifact
         if: github.event_name != 'pull_request'
-        id: export
         run: |
           set -euo pipefail
+          mkdir -p /tmp/digests
           digest="${{ steps.push.outputs.digest }}"
-          echo "digest_${{ matrix.arch }}=${digest}" >>"$GITHUB_OUTPUT"
+          # Filename is the bare hex (no `sha256:` prefix); the merge job
+          # re-prepends `sha256:` when assembling the imagetools args.
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: digest-php${{ matrix.php }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
   merge:
     if: github.event_name != 'pull_request'
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3", "8.4", "8.5"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,31 +146,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Download arch digests for this PHP
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-php${{ matrix.php }}-*
+          path: /tmp/digests
+          merge-multiple: true
+
       - name: Compute image tags
         id: tags
         run: |
           set -euo pipefail
           SHORT_SHA="$(git rev-parse --short HEAD)"
+          PHP="${{ matrix.php }}"
           TAGS=()
-          TAGS+=("${REGISTRY}:php8.3-${SHORT_SHA}")
+          TAGS+=("${REGISTRY}:php${PHP}-${SHORT_SHA}")
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            TAGS+=("${REGISTRY}:php8.3")
+            TAGS+=("${REGISTRY}:php${PHP}")
           fi
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VTAG="${GITHUB_REF#refs/tags/}"
-            TAGS+=("${REGISTRY}:${VTAG}")
-            TAGS+=("${REGISTRY}:php8.3-${VTAG}")
+            TAGS+=("${REGISTRY}:php${PHP}-${VTAG}")
+            # The unprefixed `:v<W.Z>` channel only goes to the default
+            # PHP — it's the "I don't care which PHP, give me the
+            # blessed one for this release" tag.
+            if [ "${PHP}" = "${DEFAULT_PHP}" ]; then
+              TAGS+=("${REGISTRY}:${VTAG}")
+            fi
           fi
-          # Emit -t flags for buildx imagetools.
           TAG_ARGS=$(printf -- ' -t %s' "${TAGS[@]}")
           echo "tag_args=${TAG_ARGS}" >>"$GITHUB_OUTPUT"
 
       - name: Create + push manifest list
         run: |
           set -euo pipefail
-          AMD64_DIGEST="${{ needs.build.outputs.digest_amd64 }}"
-          ARM64_DIGEST="${{ needs.build.outputs.digest_arm64 }}"
+          # Reassemble `<registry>@sha256:<hex>` refs from the digest
+          # artifact filenames stashed by the build job.
+          DIGEST_REFS=()
+          for f in /tmp/digests/*; do
+            DIGEST_REFS+=("${REGISTRY}@sha256:$(basename "$f")")
+          done
           docker buildx imagetools create \
             ${{ steps.tags.outputs.tag_args }} \
-            "${REGISTRY}@${AMD64_DIGEST}" \
-            "${REGISTRY}@${ARM64_DIGEST}"
+            "${DIGEST_REFS[@]}"

@@ -14,7 +14,9 @@ for media offload to S3-compatible buckets. Sites are deployed via the
 
 This repo publishes `ghcr.io/eightoeight/fp-runtime:php<X.Y>` — the base image
 that [`fp-site-template`](https://github.com/EightOEight/fp-site-template)
-extends.
+extends. CI builds a multi-arch manifest list (`linux/amd64` +
+`linux/arm64`) for each supported PHP minor; see
+[Published tags](#published-tags) for the tag schema.
 
 ## Status
 
@@ -28,7 +30,7 @@ extends.
 
 | Component | Version | Notes |
 |---|---|---|
-| FrankenPHP | `1.12.2` | Caddy + PHP 8.3 runtime, statically linked |
+| FrankenPHP | `1.12.2` | Caddy + PHP runtime, statically linked. Built per supported PHP minor (8.3, 8.4, 8.5) |
 | caddyserver/cache-handler | `v0.16.0` | Souin HTTP cache, compiled into the binary |
 | darkweak/storages/go-redis/caddy | `v0.0.19` | Redis storage backend for Souin |
 | dunglas/caddy-cbrotli | `v1.0.1` | Brotli encoding |
@@ -36,6 +38,23 @@ extends.
 | Composer | bundled | Composer 2.x from FrankenPHP base |
 | PHP extensions | `gd intl exif zip opcache mysqli pdo_mysql memcached redis` | WP-friendly set |
 | fp-mu-plugin | optional | Bake at build time via `FP_MU_PLUGIN_VERSION` (defaults to skip) |
+
+## Published tags
+
+CI publishes a multi-arch (`linux/amd64` + `linux/arm64`) manifest list
+for each supported PHP minor under the schema below.
+
+| Tag | Cadence | Example |
+|---|---|---|
+| `:php<X.Y>` | rolling, on push to `main` | `:php8.3`, `:php8.4`, `:php8.5` |
+| `:php<X.Y>-<short-sha>` | every non-PR push | `:php8.4-abc1234` |
+| `:php<X.Y>-v<W.Z>` | on `v*.*.*` tag push | `:php8.4-v0.2.0` |
+| `:v<W.Z>` | on `v*.*.*` tag push, **default PHP only** | `:v0.2.0` |
+
+The unprefixed `:v<W.Z>` channel exists so consumers who don't care
+which PHP they're on can pin a release tag without encoding the
+default. The default PHP is **8.3**; bumping it is a deliberate
+decision tracked in `.aidocs/php-wp-runtime-matrix.md`.
 
 ## Consumer pattern
 
@@ -85,7 +104,7 @@ Override at build time with `--build-arg`:
 
 | Arg | Default | Purpose |
 |---|---|---|
-| `PHP_VERSION` | `8.3` | PHP series. Must match a `dunglas/frankenphp:*-php<X.Y>` tag |
+| `PHP_VERSION` | `8.3` | PHP series. Must match a `dunglas/frankenphp:*-php<X.Y>` tag. CI builds `8.3`, `8.4`, `8.5` |
 | `FRANKENPHP_VERSION` | `1.12.2` | Pinned FrankenPHP base tag |
 | `CACHE_HANDLER_VERSION` | `v0.16.0` | Souin cache-handler module version |
 | `STORAGES_GO_REDIS_VERSION` | `v0.0.19` | Souin Redis storage module version |
