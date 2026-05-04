@@ -26,6 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -84,13 +88,16 @@ jobs:
           ./tests/cache-spike.sh
           docker compose down -v
 
-      - name: Push (multi-tag)
+      - name: Push (multi-arch, multi-tag)
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          # arm64 build runs under QEMU emulation. xcaddy's CGO compile
+          # under emulation is the bottleneck (~2-3× slower); a future
+          # optimisation is to split into native runners.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             FP_MU_PLUGIN_VERSION=${{ github.event.inputs.fp_mu_plugin_version || '' }}
