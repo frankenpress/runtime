@@ -89,7 +89,7 @@ Override at build time with `--build-arg`:
 | `STORAGES_GO_REDIS_VERSION` | `v0.0.19` | Souin Redis storage module version |
 | `CADDY_CBROTLI_VERSION` | `v1.0.1` | Brotli encoding module version |
 | `WP_CLI_VERSION` | `2.12.0` | WP-CLI release |
-| `FP_MU_PLUGIN_VERSION` | (empty) | If set, fetches the corresponding fp-mu-plugin tag and installs to `/app/web/app/mu-plugins/fp/`. Empty = skip |
+| `FP_MU_PLUGIN_VERSION` | `v0.1.0` | [`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin) release tag to bake at `/app/web/app/mu-plugins/fp/`. Pass an empty string to skip baking |
 
 ## Page cache invalidation
 

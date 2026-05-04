@@ -19,9 +19,10 @@ ARG CACHE_HANDLER_VERSION=v0.16.0
 ARG STORAGES_GO_REDIS_VERSION=v0.0.19
 ARG CADDY_CBROTLI_VERSION=v1.0.1
 
-# fp-mu-plugin tag to bake into the image. Empty string skips baking entirely
-# (Phase 1 default until fp-mu-plugin ships its first release in Phase 2).
-ARG FP_MU_PLUGIN_VERSION=""
+# fp-mu-plugin tag to bake into the image. Set to an empty string at build
+# time to skip baking entirely (e.g. for a base image consumed by a site
+# that supplies its own mu-plugins via composer install).
+ARG FP_MU_PLUGIN_VERSION="v0.1.0"
 
 # ---------- Builder ----------
 FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php${PHP_VERSION} AS builder
@@ -76,8 +77,9 @@ RUN curl -fsSL -o /usr/local/bin/wp \
     && wp --info --allow-root >/dev/null
 
 # fp-mu-plugin baking — installs the must-use plugin at /app/web/app/mu-plugins/fp/
-# when FP_MU_PLUGIN_VERSION is set. Phase 1 default is empty (skip), since
-# fp-mu-plugin's first release lands in Phase 2.
+# when FP_MU_PLUGIN_VERSION is set. Pass --build-arg FP_MU_PLUGIN_VERSION=
+# (empty) to skip baking entirely (e.g. for a base image where the site
+# supplies its own mu-plugins via composer install).
 ARG FP_MU_PLUGIN_VERSION
 RUN if [ -n "$FP_MU_PLUGIN_VERSION" ]; then \
         mkdir -p /app/web/app/mu-plugins/fp \
