@@ -62,9 +62,14 @@ COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 RUN setcap -r /usr/local/bin/frankenphp
 
 # WP-friendly PHP extensions. Memcached kept available for the wp object-cache drop-in
-# (separate concern from Souin's HTTP cache, which uses Redis).
+# (separate concern from Souin's HTTP cache, which uses Redis). Imagick is the
+# WordPress hosting team's recommended optional — better thumbnail / WebP /
+# AVIF / animated GIF support than gd alone, and clears the Site Health
+# "optional module imagick is not installed" warning. ~30 MB image-size cost
+# from the ImageMagick system library; acceptable for a runtime image.
 RUN install-php-extensions \
         gd \
+        imagick \
         intl \
         exif \
         zip \
