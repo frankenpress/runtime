@@ -40,20 +40,34 @@
 	metrics
 
 	# Trust upstream proxies in private CIDR ranges (k8s pod-to-pod, in-cluster
-	# LB / ingress, sidecars). When enabled, Caddy honours `X-Forwarded-Proto`
-	# from those sources, so the request's scheme reflects what the *client*
-	# saw — not what reached the pod over plain HTTP.
+	# LB / ingress, sidecars). Caddy uses this list to determine which hops
+	# may set `X-Forwarded-For`, so the {client_ip} placeholder and access
+	# logs reflect the original client rather than the proxy hop in front.
 	#
-	# Why this matters: Souin's cache key shape is `GET-<scheme>-<host>-<path>`.
-	# Without trusted_proxies, cluster-internal traffic to Caddy is `http://`,
-	# so Souin caches under `http`. Meanwhile WordPress (which sets
-	# `$_SERVER['HTTPS']='on'` from the same header in `application.php`) emits
-	# canonical `https://` URLs. The fp-mu-plugin SouinInvalidator computes
-	# DEL keys from those https URLs — which never match the http-keyed
-	# cache, so post saves never invalidate the rendered page.
+	# **Heads-up on scheme**: as of Caddy v2.7.x, trusted_proxies does NOT
+	# propagate `X-Forwarded-Proto` into the request scheme that downstream
+	# modules see. So Souin's cache key for traffic that hit a TLS-
+	# terminating proxy upstream is `GET-http-<host>-<path>`, even though
+	# the client used `https://`. We've left it that way deliberately:
 	#
-	# fp-mu-plugin v0.2.1+ DELs both schemes defensively, but trusting the
-	# proxy is the correct fix and removes the divergence at the source.
+	#   - Functional correctness comes from the cookie bypass below — any
+	#     authenticated request skips the cache entirely, so there is no
+	#     leak risk from the http-keyed entry.
+	#   - Invalidation correctness comes from fp-mu-plugin v0.2.1+, whose
+	#     SouinInvalidator DELs both `GET-http-...` and `GET-https-...`
+	#     variants on every write. Whichever scheme Souin happened to key
+	#     under, the DEL hits.
+	#
+	# The two ways to make Souin key under `https` natively are:
+	#   (a) `cache_keys { .+ { disable_scheme } }` in the cache block —
+	#       drops scheme from the key shape entirely. Requires a coordinated
+	#       update to fp-mu-plugin's invalidator (extra DEL form) and a
+	#       one-time cache flush at rollout.
+	#   (b) An out-of-tree Caddy plugin that rewrites `r.URL.Scheme` from
+	#       `X-Forwarded-Proto`. Pulls another upstream pin into xcaddy.
+	# Neither is worth the platform churn — the http-keyed entries are
+	# functionally identical to their https-keyed equivalents under the
+	# guarantees above. Don't re-investigate without a fresh reason.
 	servers {
 		trusted_proxies static private_ranges
 		client_ip_headers X-Forwarded-For
