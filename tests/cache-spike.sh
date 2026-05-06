@@ -81,6 +81,57 @@ second2=$(dump_headers "$BASE/post/2")
 echo "$second2" | grep -iE 'cache-status' | grep -qi 'hit' || fail "second /post/2 not a HIT"
 pass "/post/2 caches independently of /post/1"
 
+# 8-11. Cacheability bypass — assert auth-aware paths and auth-cookied
+# requests are never stored in Souin's Redis. The bodies should also
+# differ between two consecutive requests (proves the response is
+# rebuilt rather than served from any cache layer).
+assert_not_cached() {
+    local label="$1" url="$2"
+    shift 2
+    local first
+    first=$(curl -sS "$@" "$url")
+    sleep 0.2
+    local second
+    second=$(curl -sS "$@" "$url")
+    if [ "$first" = "$second" ]; then
+        fail "$label: response identical across requests — cache bypass not honoured"
+    fi
+    pass "$label: response rebuilt (cache bypassed)"
+}
+
+assert_no_redis_key() {
+    local label="$1" path="$2"
+    local key="GET-http-localhost:8080-${path}"
+    if $COMPOSE exec -T redis redis-cli EXISTS "$key" | grep -q '^1$'; then
+        fail "$label: Redis key '$key' exists — bypass not honoured"
+    fi
+    pass "$label: no Redis key for '$path' (bypass honoured)"
+}
+
+assert_not_cached "wp-admin path"           "$BASE/wp-admin/edit.php"
+assert_no_redis_key "wp-admin path"         "/wp-admin/edit.php"
+
+assert_not_cached "Bedrock /wp/wp-admin"    "$BASE/wp/wp-admin/edit.php"
+assert_no_redis_key "Bedrock /wp/wp-admin"  "/wp/wp-admin/edit.php"
+
+assert_not_cached "wp-login.php"            "$BASE/wp-login.php"
+assert_no_redis_key "wp-login.php"          "/wp-login.php"
+
+assert_not_cached "wp-json REST"            "$BASE/wp-json/wp/v2/posts"
+assert_no_redis_key "wp-json REST"          "/wp-json/wp/v2/posts"
+
+# `xmlrpc.php` is in the cache `regex.exclude` list, but in this harness
+# it's also blocked by the .php whitelist (Caddy responds 404 before
+# reaching the cache layer). Nothing dynamic to compare bodies against,
+# so we skip the runtime assertion. Downstream sites that whitelist
+# xmlrpc.php (legacy clients) still benefit from the bypass rule.
+
+# Cookie-based bypass — same anonymous URL becomes uncacheable when
+# the request carries a WP auth or per-user state cookie.
+assert_not_cached "wordpress_logged_in_*"   "$BASE/post/99" -H 'Cookie: wordpress_logged_in_abc123=fake'
+assert_not_cached "wp-postpass_*"           "$BASE/post/98" -H 'Cookie: wp-postpass_abc123=fake'
+assert_not_cached "comment_author_*"        "$BASE/post/97" -H 'Cookie: comment_author_abc123=fake'
+
 echo
 pass "All Phase 0 cache assertions passed."
 echo

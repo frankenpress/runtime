@@ -5,9 +5,29 @@
 #   FP_CACHE_TTL             cache entry TTL                  (default: 5m)
 #   FP_CACHE_STALE           stale-while-revalidate window    (default: 1h)
 #   FP_CACHE_DEFAULT_CONTROL upstream Cache-Control fallback  (default: public, s-maxage=300)
+#   FP_CACHE_BYPASS_EXTRA    extra path-prefix alternation appended to the
+#                            cache-bypass regex below           (default: empty)
+#                            — set to e.g. `|^/api/private/|^/members/`
+#                              (note the leading `|`) to add custom paths
+#                              that must NEVER be cached
 #   FP_DOCROOT               WordPress webroot                (default: /app/web)
 #   FP_PORT                  public HTTP listen port          (default: 8080)
 #   FP_METRICS_PORT          Prometheus metrics listen port   (default: 9145)
+#
+# Cacheability model:
+#   Souin only caches anonymous public GETs. Two layers of bypass:
+#     1. Path bypass — anything that's auth-aware or admin-only at the URL
+#        level (wp-admin, wp-login, wp-cron, wp-json, xmlrpc) is excluded
+#        via the cache block's `regex.exclude`. Bedrock layout (`/wp/...`)
+#        and classic layout (`/...`) are both covered.
+#     2. Cookie bypass — any request carrying a WP auth or per-user state
+#        cookie (`wordpress_logged_in_*`, `wp-postpass_*`, `comment_author_*`)
+#        skips the cache directive entirely. This is what stops a logged-in
+#        admin's response from being cached and served to the next visitor.
+#
+#   Anything else — anonymous GETs to non-auth public paths — is cached
+#   per the standard HTTP semantics (upstream `Cache-Control` honoured;
+#   `default_cache_control` is the fallback when the upstream is silent).
 #
 # Invalidation:
 #   The fp-mu-plugin's SouinInvalidator deletes cache entries directly in Redis
@@ -58,6 +78,16 @@
 			strategy hard
 		}
 
+		# Path-level bypass. Anything matching is never stored, never
+		# served from cache. The default set covers every auth-aware /
+		# admin-only path on a stock WordPress install in either layout
+		# (Bedrock `/wp/...` or classic `/...`). FP_CACHE_BYPASS_EXTRA
+		# is appended verbatim — set it to `|^/api/private/` style
+		# alternations to add custom paths.
+		regex {
+			exclude (?i)^(/wp)?/(wp-admin/|wp-login\.php|wp-cron\.php|xmlrpc\.php|wp-json/){$FP_CACHE_BYPASS_EXTRA:}
+		}
+
 		# Upstream may override per-response with Cache-Control headers.
 		default_cache_control "{$FP_CACHE_DEFAULT_CONTROL:public, s-maxage=300}"
 	}
@@ -88,6 +118,23 @@
 
 	handle @bad_php {
 		respond 404
+	}
+
+	# Cookie-based cache bypass. The path-based bypass in the global cache
+	# block above catches admin/login/cron/REST URLs. This catches anything
+	# else where the request itself signals "this user expects fresh /
+	# personalised content":
+	#   wordpress_logged_in_*  any logged-in user (admin or not)
+	#   wp-postpass_*          visitor unlocked a password-protected post
+	#   comment_author_*       visitor recently posted a comment and is
+	#                          expected to see it before moderation
+	# Matching requests skip the `cache` directive entirely — straight to
+	# PHP, never stored. Anonymous traffic (no matching cookie) flows
+	# through the cached `handle` block below.
+	@auth_or_state_cookie header_regexp Cookie (wordpress_logged_in_|wp-postpass_|comment_author_)
+	handle @auth_or_state_cookie {
+		try_files {path} {path}/ /index.php?{query}
+		php_server
 	}
 
 	handle {
