@@ -98,6 +98,24 @@ config out of the box.
 WordPress-side env vars (DB credentials, salts, etc.) are the site's
 responsibility — see [`fp-site-template`](https://github.com/EightOEight/fp-site-template).
 
+## Logging
+
+The public server (`FP_PORT`) emits **Caddy access logs as JSON to
+stdout** — one line per request, with `request.method`, `request.uri`,
+`status`, `duration`, `bytes_read`, `resp_headers`, `client_ip`. The
+metrics server (`FP_METRICS_PORT`) is **left unlogged on purpose** —
+Prometheus scrapes every ~15s would otherwise dominate the log stream.
+
+PHP and WordPress errors flow to **stderr** via
+`error_log = /dev/stderr` in `php.ini`. WordPress sites running with
+`WP_ENV=staging` additionally route `WP_DEBUG_LOG` to `php://stderr`
+(see [`fp-site-template`](https://github.com/EightOEight/fp-site-template/blob/main/config/environments/staging.php)).
+
+Any cluster-side log shipper (Vector, Grafana Alloy, Datadog Agent,
+Fluent Bit) that tails container stdout/stderr picks both streams up
+unmodified. End-to-end shipping setup (Vector → Loki / Datadog) is
+documented at <https://docs.frankenpress.com/operations/logging>.
+
 ## Build args
 
 Override at build time with `--build-arg`:

@@ -14,6 +14,16 @@
 #   FP_PORT                  public HTTP listen port          (default: 8080)
 #   FP_METRICS_PORT          Prometheus metrics listen port   (default: 9145)
 #
+# Logging:
+#   The public server (FP_PORT) emits Caddy access logs as JSON to stdout
+#   (one line per request, with method, uri, status, duration, client_ip,
+#   resp_headers, etc.). The metrics server (FP_METRICS_PORT) is left
+#   unlogged on purpose — Prometheus scrapes once every ~15s would
+#   otherwise dominate the log stream. PHP/WordPress errors flow to
+#   stderr via php.ini (`error_log = /dev/stderr`). Any cluster-side
+#   log shipper (Vector, Grafana Alloy, Datadog Agent, Fluent Bit) that
+#   tails container stdout/stderr will pick both streams up unmodified.
+#
 # Cacheability model:
 #   Souin only caches anonymous public GETs. Two layers of bypass:
 #     1. Path bypass — anything that's auth-aware or admin-only at the URL
@@ -111,6 +121,15 @@
 	root * {$FP_DOCROOT:/app/web}
 
 	encode zstd br gzip
+
+	# Access logs as JSON to stdout. One line per request — picked up by
+	# any cluster log shipper that tails container stdout. The metrics
+	# server below is intentionally left unlogged.
+	log {
+		output stdout
+		format json
+		level INFO
+	}
 
 	# /healthz — cheap liveness probe target (no PHP, no cache).
 	@healthz path /healthz
