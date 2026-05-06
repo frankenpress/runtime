@@ -126,6 +126,24 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Single rollup check that succeeds iff the entire `build` matrix
+  # succeeded. Branch protection requires this one stable name instead
+  # of every matrix leg — bumping the PHP/arch matrix no longer requires
+  # editing the ruleset.
+  gate:
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify build matrix
+        run: |
+          result="${{ needs.build.result }}"
+          if [[ "$result" != "success" ]]; then
+            echo "::error::build matrix did not succeed (result=$result)"
+            exit 1
+          fi
+          echo "all build matrix legs passed"
+
   merge:
     if: github.event_name != 'pull_request'
     needs: build
