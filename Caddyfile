@@ -14,11 +14,30 @@
 #   using the documented key format (GET-<scheme>-<host>-<path>, IDX_<...>,
 #   SURROGATE_<tag>). Souin's HTTP invalidation APIs (PURGE / POST-CRUD /
 #   /api.souin admin) are unreliable in cache-handler v0.16.0 — see PHASE-0.md.
-
 {
 	admin localhost:2019
 	auto_https off
 	metrics
+
+	# Trust upstream proxies in private CIDR ranges (k8s pod-to-pod, in-cluster
+	# LB / ingress, sidecars). When enabled, Caddy honours `X-Forwarded-Proto`
+	# from those sources, so the request's scheme reflects what the *client*
+	# saw — not what reached the pod over plain HTTP.
+	#
+	# Why this matters: Souin's cache key shape is `GET-<scheme>-<host>-<path>`.
+	# Without trusted_proxies, cluster-internal traffic to Caddy is `http://`,
+	# so Souin caches under `http`. Meanwhile WordPress (which sets
+	# `$_SERVER['HTTPS']='on'` from the same header in `application.php`) emits
+	# canonical `https://` URLs. The fp-mu-plugin SouinInvalidator computes
+	# DEL keys from those https URLs — which never match the http-keyed
+	# cache, so post saves never invalidate the rendered page.
+	#
+	# fp-mu-plugin v0.2.1+ DELs both schemes defensively, but trusting the
+	# proxy is the correct fix and removes the divergence at the source.
+	servers {
+		trusted_proxies static private_ranges
+		client_ip_headers X-Forwarded-For
+	}
 
 	cache {
 		# GET/HEAD only. Adding POST/PUT/etc. causes cache-handler to cache
