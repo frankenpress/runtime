@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
   packages: write
+  # Required for sigstore keyless OIDC signing in the `merge` job (cosign
+  # needs to mint a workflow identity token). Workflow-level so the merge
+  # matrix legs all inherit it without per-job repetition.
+  id-token: write
 
 env:
   REGISTRY: ghcr.io/eightoeight/fp-runtime
@@ -194,8 +198,13 @@ jobs:
           fi
           TAG_ARGS=$(printf -- ' -t %s' "${TAGS[@]}")
           echo "tag_args=${TAG_ARGS}" >>"$GITHUB_OUTPUT"
+          # Expose the first tag separately so the next step can inspect
+          # the just-pushed manifest list to recover its digest (all the
+          # tags we publish point at the same manifest, so any one works).
+          echo "first_tag=${TAGS[0]}" >>"$GITHUB_OUTPUT"
 
       - name: Create + push manifest list
+        id: manifest
         run: |
           set -euo pipefail
           # Reassemble `<registry>@sha256:<hex>` refs from the digest
@@ -207,3 +216,39 @@ jobs:
           docker buildx imagetools create \
             ${{ steps.tags.outputs.tag_args }} \
             "${DIGEST_REFS[@]}"
+          # Capture the manifest-list digest of what we just pushed, so
+          # the SBOM + cosign steps below can pin to a stable, immutable
+          # ref instead of a moving tag.
+          MANIFEST_DIGEST=$(docker buildx imagetools inspect "${{ steps.tags.outputs.first_tag }}" --format '{{.Manifest.Digest}}')
+          echo "ref=${REGISTRY}@${MANIFEST_DIGEST}" >>"$GITHUB_OUTPUT"
+
+      # Generate an SPDX SBOM of the published manifest list and attach
+      # it to the image digest via `cosign attest`. Combined with the
+      # cosign signature in the next step, consumers can audit provenance:
+      #   cosign tree   ghcr.io/eightoeight/fp-runtime:php8.3
+      #   cosign verify ghcr.io/eightoeight/fp-runtime:php8.3 \
+      #     --certificate-identity-regexp '^https://github.com/EightOEight/fp-runtime/' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      #
+      # Note: syft scans whichever platform the runner pulls (linux/amd64
+      # by default on ubuntu-latest), so the attested SBOM is the amd64
+      # surface — accurate for the dominant pull path. Per-arch SBOMs
+      # would mean scanning + attesting per (php, arch) leg in the build
+      # job; deferred until a real consumer asks for it.
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.manifest.outputs.ref }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign + attest SBOM (keyless OIDC)
+        env:
+          IMAGE_REF: ${{ steps.manifest.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$IMAGE_REF"
+          cosign attest --yes --predicate sbom.spdx.json --type spdxjson "$IMAGE_REF"
