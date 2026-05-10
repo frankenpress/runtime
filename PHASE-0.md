@@ -1,6 +1,6 @@
 # Phase 0 — FrankenPHP + Caddy + Souin spike
 
-Running notes for the tech-lead spike before any production work begins on `fp-runtime`.
+Running notes for the tech-lead spike before any production work begins on `runtime`.
 Outcome of this phase: a working local container, a decision memo on Souin integration
 strategy, and a list of risks the platform team must accept (or mitigate) before Phase 1.
 
@@ -61,7 +61,7 @@ strategy, and a list of risks the platform team must accept (or mitigate) before
 - These are two separate caches: WP object cache (DB queries, transients,
   in-process) vs Souin HTTP cache (full response bodies, cross-replica).
 - **Two-cache option (recommended for Phase 1):** keep memcached for WP object
-  cache, add Redis for Souin. The Helm chart in `fp-charts` will support both.
+  cache, add Redis for Souin. The Helm chart in `charts` will support both.
 - **Single-cache option:** migrate WP object cache to Redis. Smaller infra
   surface but a side migration we don't need to bundle. Leave it as a future
   values-toggle for end users.
@@ -184,7 +184,7 @@ SURROGATE_/post/1                      # auto-generated url-keyed surrogate inde
 SURROGATE_posts post-1                 # surrogate key from PHP's Surrogate-Key header
 ```
 
-This is the actionable invalidation primitive. The mu-plugin's `SouinInvalidator` (Phase 2 deliverable in `fp-mu-plugin`) will:
+This is the actionable invalidation primitive. The mu-plugin's `SouinInvalidator` (Phase 2 deliverable in `mu-plugin`) will:
 1. Connect to Redis directly (the runtime image already includes `redis` PHP ext).
 2. On `save_post` / `clean_post_cache` / `permalink_structure_changed` / etc., compute the cache key (`GET-{scheme}-{host}-{path}`) for the affected URLs.
 3. `DEL` the body key, the IDX_ key, and any matching SURROGATE_ keys.

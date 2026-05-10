@@ -14,12 +14,12 @@ ARG PHP_VERSION=8.3
 ARG FRANKENPHP_VERSION=1.12.2
 
 # Caddy modules baked into the build. Pin to specific versions per
-# fp-runtime/PHASE-0.md acceptance criteria.
+# runtime/PHASE-0.md acceptance criteria.
 ARG CACHE_HANDLER_VERSION=v0.16.0
 ARG STORAGES_GO_REDIS_VERSION=v0.0.19
 ARG CADDY_CBROTLI_VERSION=v1.0.1
 
-# fp-mu-plugin tag to bake into the image. Set to an empty string at build
+# mu-plugin tag to bake into the image. Set to an empty string at build
 # time to skip baking entirely (e.g. for a base image consumed by a site
 # that supplies its own mu-plugins via composer install).
 ARG FP_MU_PLUGIN_VERSION="v0.1.1"
@@ -58,7 +58,7 @@ COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 # bind FP_PORT (default 8080) — a high port — so the cap is unused, and
 # its presence on the binary makes the kernel REFUSE to exec under
 # `no_new_privs` (which Kubernetes' securityContext.allowPrivilegeEscalation:
-# false sets). Stripping it lets fp-charts ship with hardened defaults.
+# false sets). Stripping it lets charts ship with hardened defaults.
 RUN setcap -r /usr/local/bin/frankenphp
 
 # WP-friendly PHP extensions. Memcached kept available for the wp object-cache drop-in
@@ -89,7 +89,7 @@ RUN curl -fsSL -o /usr/local/bin/wp \
     && chmod +x /usr/local/bin/wp \
     && wp --info --allow-root >/dev/null
 
-# fp-mu-plugin baking — installs the must-use plugin at /app/web/app/mu-plugins/fp/
+# mu-plugin baking — installs the must-use plugin at /app/web/app/mu-plugins/fp/
 # when FP_MU_PLUGIN_VERSION is set. Pass --build-arg FP_MU_PLUGIN_VERSION=
 # (empty) to skip baking entirely (e.g. for a base image where the site
 # supplies its own mu-plugins via composer install).
@@ -98,13 +98,13 @@ RUN if [ -n "$FP_MU_PLUGIN_VERSION" ]; then \
         mkdir -p /app/web/app/mu-plugins/fp \
         && curl -fsSL "https://github.com/frankenpress/mu-plugin/archive/refs/tags/${FP_MU_PLUGIN_VERSION}.tar.gz" \
             | tar xz --strip-components=1 -C /app/web/app/mu-plugins/fp/ \
-        && echo "fp-mu-plugin ${FP_MU_PLUGIN_VERSION} baked at /app/web/app/mu-plugins/fp/" ; \
+        && echo "mu-plugin ${FP_MU_PLUGIN_VERSION} baked at /app/web/app/mu-plugins/fp/" ; \
     else \
-        echo "fp-mu-plugin baking skipped (FP_MU_PLUGIN_VERSION not set)" ; \
+        echo "mu-plugin baking skipped (FP_MU_PLUGIN_VERSION not set)" ; \
     fi
 
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY php.ini /usr/local/etc/php/conf.d/fp-runtime.ini
+COPY php.ini /usr/local/etc/php/conf.d/runtime.ini
 COPY web /app/web
 
 WORKDIR /app
@@ -114,7 +114,7 @@ EXPOSE 8080 9145
 # OCI labels for supply-chain hygiene. Override these via build args in CI.
 ARG SOURCE_COMMIT=""
 ARG BUILD_DATE=""
-LABEL org.opencontainers.image.title="fp-runtime" \
+LABEL org.opencontainers.image.title="runtime" \
       org.opencontainers.image.description="FrankenPress runtime — Caddy + FrankenPHP + Souin for WordPress on Kubernetes" \
       org.opencontainers.image.source="https://github.com/frankenpress/runtime" \
       org.opencontainers.image.licenses="MIT" \

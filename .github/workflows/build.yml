@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       fp_mu_plugin_version:
-        description: "fp-mu-plugin tag to bake (empty = skip)"
+        description: "mu-plugin tag to bake (empty = skip)"
         required: false
         default: ""
 
@@ -70,7 +70,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: fp-runtime:test
+          tags: runtime:test
           platforms: ${{ matrix.platform }}
           build-args: |
             PHP_VERSION=${{ matrix.php }}
@@ -80,7 +80,7 @@ jobs:
 
       - name: Run cache-spike integration test
         env:
-          FP_RUNTIME_IMAGE: fp-runtime:test
+          FP_RUNTIME_IMAGE: runtime:test
         run: |
           docker compose up -d
           for i in $(seq 1 60); do

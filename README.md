@@ -1,9 +1,9 @@
-# fp-runtime
+# runtime
 
 **FrankenPress runtime image** — the base container image for the FrankenPress
 stack.
 
-**Documentation:** <https://docs.frankenpress.com/components/fp-runtime>
+**Documentation:** <https://docs.frankenpress.com/components/runtime>
 
 FrankenPress is an opinionated, minimal way to run WordPress at scale on
 Kubernetes: **Caddy + FrankenPHP** for the web server and PHP runtime, **Souin**
@@ -29,7 +29,7 @@ extends. CI builds a multi-arch manifest list (`linux/amd64` +
 | WP-CLI | `2.12.0` | Cron + admin tasks |
 | Composer | not installed | The runtime image is for serving traffic, not building. Install Composer in your site's build stage (or one-shot via `curl -fsSL https://getcomposer.org/installer \| php`) when you need it |
 | PHP extensions | `gd intl exif zip opcache mysqli pdo_mysql memcached redis` | WP-friendly set |
-| fp-mu-plugin | optional | Bake at build time via `FP_MU_PLUGIN_VERSION` (defaults to skip) |
+| mu-plugin | optional | Bake at build time via `FP_MU_PLUGIN_VERSION` (defaults to skip) |
 
 ## Published tags
 
@@ -145,7 +145,7 @@ pipeline-DEL all members. Sub-millisecond.
 ## Local development
 
 ```bash
-make build         # build fp-runtime:dev
+make build         # build runtime:dev
 make up            # docker compose up -d (runtime + redis)
 make test          # run tests/cache-spike.sh
 make down          # tear down

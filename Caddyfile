@@ -40,7 +40,7 @@
 #   `default_cache_control` is the fallback when the upstream is silent).
 #
 # Invalidation:
-#   The fp-mu-plugin's SouinInvalidator deletes cache entries directly in Redis
+#   The mu-plugin's SouinInvalidator deletes cache entries directly in Redis
 #   using the documented key format (GET-<scheme>-<host>-<path>, IDX_<...>,
 #   SURROGATE_<tag>). Souin's HTTP invalidation APIs (PURGE / POST-CRUD /
 #   /api.souin admin) are unreliable in cache-handler v0.16.0 — see PHASE-0.md.
@@ -63,7 +63,7 @@
 	#   - Functional correctness comes from the cookie bypass below — any
 	#     authenticated request skips the cache entirely, so there is no
 	#     leak risk from the http-keyed entry.
-	#   - Invalidation correctness comes from fp-mu-plugin v0.2.1+, whose
+	#   - Invalidation correctness comes from mu-plugin v0.2.1+, whose
 	#     SouinInvalidator DELs both `GET-http-...` and `GET-https-...`
 	#     variants on every write. Whichever scheme Souin happened to key
 	#     under, the DEL hits.
@@ -71,7 +71,7 @@
 	# The two ways to make Souin key under `https` natively are:
 	#   (a) `cache_keys { .+ { disable_scheme } }` in the cache block —
 	#       drops scheme from the key shape entirely. Requires a coordinated
-	#       update to fp-mu-plugin's invalidator (extra DEL form) and a
+	#       update to mu-plugin's invalidator (extra DEL form) and a
 	#       one-time cache flush at rollout.
 	#   (b) An out-of-tree Caddy plugin that rewrites `r.URL.Scheme` from
 	#       `X-Forwarded-Proto`. Pulls another upstream pin into xcaddy.
@@ -87,7 +87,7 @@
 		# GET/HEAD only. Adding POST/PUT/etc. causes cache-handler to cache
 		# write responses themselves rather than invalidating GETs (verified
 		# behaviour in v0.16.0). Invalidation goes through direct Redis DEL
-		# from the fp-mu-plugin.
+		# from the mu-plugin.
 		allowed_http_verbs GET HEAD
 
 		ttl {$FP_CACHE_TTL:5m}

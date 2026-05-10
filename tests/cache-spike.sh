@@ -8,7 +8,7 @@
 #   4. Redis is the actual backend (Cache-Status reports detail=REDIS).
 #   5. Surrogate-Key index populated in Redis (SURROGATE_<tag>).
 #   6. Direct Redis DEL invalidates the cache entry — the pattern the
-#      fp-mu-plugin's SouinInvalidator will use, because Souin's
+#      mu-plugin's SouinInvalidator will use, because Souin's
 #      documented HTTP invalidation APIs (PURGE, POST-CRUD, /souin-api
 #      admin) are broken in cache-handler v0.16.0. See PHASE-0.md for
 #      the investigation log.

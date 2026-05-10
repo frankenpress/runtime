@@ -1,7 +1,7 @@
 # FrankenPress runtime — common dev tasks.
 #
 # Usage:
-#   make build              build the runtime image (tag: fp-runtime:dev)
+#   make build              build the runtime image (tag: runtime:dev)
 #   make up                 docker compose up -d (runtime + redis)
 #   make down               docker compose down -v (drop volumes)
 #   make test               run the cache-spike integration test against a running stack
@@ -10,7 +10,7 @@
 #   make logs               tail runtime logs
 #   make size               report compressed image size
 
-IMAGE ?= fp-runtime:dev
+IMAGE ?= runtime:dev
 PHP_VERSION ?= 8.3
 FRANKENPHP_VERSION ?= 1.12.2
 FP_MU_PLUGIN_VERSION ?= v0.1.1

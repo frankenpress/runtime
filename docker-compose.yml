@@ -3,12 +3,12 @@
 # Brings up the runtime container + Redis (Souin's HTTP cache backend).
 #
 # Local dev:
-#   docker compose up --build           # builds the image as fp-runtime:dev
+#   docker compose up --build           # builds the image as runtime:dev
 #   ./tests/cache-spike.sh              # exercises the cache
 #
 # CI / re-using a pre-built image:
-#   docker build -t fp-runtime:test .
-#   FP_RUNTIME_IMAGE=fp-runtime:test docker compose up -d
+#   docker build -t runtime:test .
+#   FP_RUNTIME_IMAGE=runtime:test docker compose up -d
 #   ./tests/cache-spike.sh
 #
 # Override env vars to tune the cache or change ports — see the Caddyfile
@@ -17,7 +17,7 @@
 services:
   runtime:
     build: .
-    image: ${FP_RUNTIME_IMAGE:-fp-runtime:dev}
+    image: ${FP_RUNTIME_IMAGE:-runtime:dev}
     ports:
       - "8080:8080"   # http
       - "9145:9145"   # metrics
