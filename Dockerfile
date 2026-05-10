@@ -118,7 +118,7 @@ LABEL org.opencontainers.image.title="runtime" \
       org.opencontainers.image.description="FrankenPress runtime — Caddy + FrankenPHP + Souin for WordPress on Kubernetes" \
       org.opencontainers.image.source="https://github.com/frankenpress/runtime" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.vendor="EightOEight" \
+      org.opencontainers.image.vendor="FrankENpress" \
       org.opencontainers.image.revision="${SOURCE_COMMIT}" \
       org.opencontainers.image.created="${BUILD_DATE}"
 

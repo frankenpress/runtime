@@ -56,7 +56,7 @@ strategy, and a list of risks the platform team must accept (or mitigate) before
 
 ### Cache backend implications
 
-- Souin needs **Redis**. Existing EightOEight infrastructure runs **memcached**
+- Souin needs **Redis**. Existing FrankENpress infrastructure runs **memcached**
   for WP `object-cache.php` (the wp-mu-plugin's drop-in).
 - These are two separate caches: WP object cache (DB queries, transients,
   in-process) vs Souin HTTP cache (full response bodies, cross-replica).
