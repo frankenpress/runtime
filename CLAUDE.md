@@ -8,10 +8,10 @@ The **base container image** for the FrankenPress stack: a single-process
 container with **Caddy + FrankenPHP** (worker-mode-capable) and Souin
 (via [`caddyserver/cache-handler`](https://github.com/caddyserver/cache-handler))
 compiled into the binary via xcaddy. WP-CLI, Composer, and
-[`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin) are baked
-in. Sites extend this base via [`fp-site-template`](https://github.com/EightOEight/fp-site-template).
+[`mu-plugin`](https://github.com/frankenpress/mu-plugin) are baked
+in. Sites extend this base via [`site-template`](https://github.com/frankenpress/site-template).
 
-Published image: **`ghcr.io/eightoeight/fp-runtime:php8.3`** + version
+Published image: **`ghcr.io/frankenpress/runtime:php8.3`** + version
 tags (`v0.1.0`, `php8.3-v0.1.0`).
 
 Public docs: **<https://docs.frankenpress.com/components/fp-runtime>**
@@ -59,15 +59,15 @@ Caddyfile knob, update:
 
 1. The Caddyfile header (the one source of truth for env vars)
 2. README's env-var / build-arg tables
-3. `https://docs.frankenpress.com/components/fp-runtime` (in [`docs`](https://github.com/EightOEight/docs))
+3. `https://docs.frankenpress.com/components/fp-runtime` (in [`docs`](https://github.com/frankenpress/docs))
 4. `https://docs.frankenpress.com/operations/configuration`
 
 ## Companion repos
 
 | Repo | Purpose |
 |---|---|
-| [`fp-runtime`](https://github.com/EightOEight/fp-runtime) (this repo) | Base container image |
-| [`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin) | Must-use plugin (S3 bootstrap + Souin invalidator) |
-| [`fp-site-template`](https://github.com/EightOEight/fp-site-template) | GitHub template for new sites |
-| [`fp-charts`](https://github.com/EightOEight/fp-charts) | Helm chart `fp-site` |
-| [`docs`](https://github.com/EightOEight/docs) | Mintlify docs site |
+| [`runtime`](https://github.com/frankenpress/runtime) (this repo) | Base container image |
+| [`mu-plugin`](https://github.com/frankenpress/mu-plugin) | Must-use plugin (S3 bootstrap + Souin invalidator) |
+| [`site-template`](https://github.com/frankenpress/site-template) | GitHub template for new sites |
+| [`charts`](https://github.com/frankenpress/charts) | Helm chart `site` |
+| [`docs`](https://github.com/frankenpress/docs) | Mintlify docs site |

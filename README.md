@@ -10,10 +10,10 @@ Kubernetes: **Caddy + FrankenPHP** for the web server and PHP runtime, **Souin**
 (via [`caddyserver/cache-handler`](https://github.com/caddyserver/cache-handler))
 for HTTP page cache, and [`humanmade/s3-uploads`](https://github.com/humanmade/S3-Uploads)
 for media offload to S3-compatible buckets. Sites are deployed via the
-[`fp-charts`](https://github.com/EightOEight/fp-charts) Helm chart.
+[`charts`](https://github.com/frankenpress/charts) Helm chart.
 
-This repo publishes `ghcr.io/eightoeight/fp-runtime:php<X.Y>` — the base image
-that [`fp-site-template`](https://github.com/EightOEight/fp-site-template)
+This repo publishes `ghcr.io/frankenpress/runtime:php<X.Y>` — the base image
+that [`site-template`](https://github.com/frankenpress/site-template)
 extends. CI builds a multi-arch manifest list (`linux/amd64` +
 `linux/arm64`) for each supported PHP minor; see
 [Published tags](#published-tags) for the tag schema.
@@ -54,7 +54,7 @@ Downstream WordPress site images extend this base:
 
 ```dockerfile
 # In your-site/Dockerfile
-FROM ghcr.io/eightoeight/fp-runtime:php8.3 AS base
+FROM ghcr.io/frankenpress/runtime:php8.3 AS base
 
 # 1. composer install your site code in a builder stage
 FROM composer:2 AS deps
@@ -88,7 +88,7 @@ config out of the box.
 | `FP_METRICS_PORT` | `9145` | Prometheus metrics listen port (separate from public traffic) |
 
 WordPress-side env vars (DB credentials, salts, etc.) are the site's
-responsibility — see [`fp-site-template`](https://github.com/EightOEight/fp-site-template).
+responsibility — see [`site-template`](https://github.com/frankenpress/site-template).
 
 ## Logging
 
@@ -101,7 +101,7 @@ Prometheus scrapes every ~15s would otherwise dominate the log stream.
 PHP and WordPress errors flow to **stderr** via
 `error_log = /dev/stderr` in `php.ini`. WordPress sites running with
 `WP_ENV=staging` additionally route `WP_DEBUG_LOG` to `php://stderr`
-(see [`fp-site-template`](https://github.com/EightOEight/fp-site-template/blob/main/config/environments/staging.php)).
+(see [`site-template`](https://github.com/frankenpress/site-template/blob/main/config/environments/staging.php)).
 
 Any cluster-side log shipper (Vector, Grafana Alloy, Datadog Agent,
 Fluent Bit) that tails container stdout/stderr picks both streams up
@@ -120,12 +120,12 @@ Override at build time with `--build-arg`:
 | `STORAGES_GO_REDIS_VERSION` | `v0.0.19` | Souin Redis storage module version |
 | `CADDY_CBROTLI_VERSION` | `v1.0.1` | Brotli encoding module version |
 | `WP_CLI_VERSION` | `2.12.0` | WP-CLI release |
-| `FP_MU_PLUGIN_VERSION` | `v0.1.1` | [`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin) release tag to bake at `/app/web/app/mu-plugins/fp/`. Pass an empty string to skip baking |
+| `FP_MU_PLUGIN_VERSION` | `v0.1.1` | [`mu-plugin`](https://github.com/frankenpress/mu-plugin) release tag to bake at `/app/web/app/mu-plugins/fp/`. Pass an empty string to skip baking |
 
 ## Page cache invalidation
 
 Souin caches GET responses in Redis. Invalidation is performed by the
-[`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin)'s
+[`mu-plugin`](https://github.com/frankenpress/mu-plugin)'s
 `SouinInvalidator` connecting **directly to Redis** and `DEL`ing cache keys.
 The Souin HTTP invalidation APIs (PURGE, POST-CRUD, `/api.souin/*` admin) are
 broken in cache-handler v0.16.0 — see [`PHASE-0.md`](./PHASE-0.md) for the
@@ -163,7 +163,7 @@ make ci
 
 | Repo | Purpose |
 |---|---|
-| [`fp-runtime`](https://github.com/EightOEight/fp-runtime) (this repo) | Base container image |
-| [`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin) | Slim WordPress must-use plugin (S3 uploads bootstrap, Souin invalidator, Site Health overrides, SMTP mailer) |
-| [`fp-site-template`](https://github.com/EightOEight/fp-site-template) | GitHub template for new sites — Bedrock-layout WordPress with S3 uploads |
-| [`fp-charts`](https://github.com/EightOEight/fp-charts) | Helm chart `fp-site` for Kubernetes deployment |
+| [`runtime`](https://github.com/frankenpress/runtime) (this repo) | Base container image |
+| [`mu-plugin`](https://github.com/frankenpress/mu-plugin) | Slim WordPress must-use plugin (S3 uploads bootstrap, Souin invalidator, Site Health overrides, SMTP mailer) |
+| [`site-template`](https://github.com/frankenpress/site-template) | GitHub template for new sites — Bedrock-layout WordPress with S3 uploads |
+| [`charts`](https://github.com/frankenpress/charts) | Helm chart `site` for Kubernetes deployment |

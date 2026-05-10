@@ -33,7 +33,7 @@ strategy, and a list of risks the platform team must accept (or mitigate) before
   Surrogate-Key purges — but it's Varnish-flavoured and would need adaptation. Not
   a clean fit.
 - **Decision: write our own `SouinInvalidator` mu-plugin component** in
-  [`fp-mu-plugin`](https://github.com/EightOEight/fp-mu-plugin). It's small —
+  [`mu-plugin`](https://github.com/frankenpress/mu-plugin). It's small —
   hooks `save_post` / `deleted_post` / `clean_post_cache` / `switch_theme` /
   `permalink_structure_changed`, emits `Surrogate-Key` headers on responses,
   sends `PURGE / Surrogate-Key: ...` to the Souin admin API on writes.

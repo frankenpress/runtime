@@ -2,7 +2,7 @@
 
 # FrankenPress runtime — Caddy + FrankenPHP + Souin (via caddyserver/cache-handler)
 # with go-redis storage compiled in. Consumed by downstream WordPress site images
-# (see https://github.com/EightOEight/fp-site-template).
+# (see https://github.com/frankenpress/site-template).
 #
 # All upstream pins live here. Bump deliberately; track stability via the
 # cache-spike integration test (./tests/cache-spike.sh) in CI.
@@ -96,7 +96,7 @@ RUN curl -fsSL -o /usr/local/bin/wp \
 ARG FP_MU_PLUGIN_VERSION
 RUN if [ -n "$FP_MU_PLUGIN_VERSION" ]; then \
         mkdir -p /app/web/app/mu-plugins/fp \
-        && curl -fsSL "https://github.com/EightOEight/fp-mu-plugin/archive/refs/tags/${FP_MU_PLUGIN_VERSION}.tar.gz" \
+        && curl -fsSL "https://github.com/frankenpress/mu-plugin/archive/refs/tags/${FP_MU_PLUGIN_VERSION}.tar.gz" \
             | tar xz --strip-components=1 -C /app/web/app/mu-plugins/fp/ \
         && echo "fp-mu-plugin ${FP_MU_PLUGIN_VERSION} baked at /app/web/app/mu-plugins/fp/" ; \
     else \
@@ -116,7 +116,7 @@ ARG SOURCE_COMMIT=""
 ARG BUILD_DATE=""
 LABEL org.opencontainers.image.title="fp-runtime" \
       org.opencontainers.image.description="FrankenPress runtime — Caddy + FrankenPHP + Souin for WordPress on Kubernetes" \
-      org.opencontainers.image.source="https://github.com/EightOEight/fp-runtime" \
+      org.opencontainers.image.source="https://github.com/frankenpress/runtime" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="EightOEight" \
       org.opencontainers.image.revision="${SOURCE_COMMIT}" \
