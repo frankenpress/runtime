@@ -21,7 +21,7 @@ permissions:
   id-token: write
 
 env:
-  REGISTRY: ghcr.io/eightoeight/fp-runtime
+  REGISTRY: ghcr.io/frankenpress/runtime
   # The default PHP gets the unprefixed `:v<W.Z>` release tag in addition
   # to its own `:php<X.Y>-v<W.Z>`. Bumping this is a deliberate decision
   # — see .aidocs/php-wp-runtime-matrix.md.
@@ -225,9 +225,9 @@ jobs:
       # Generate an SPDX SBOM of the published manifest list and attach
       # it to the image digest via `cosign attest`. Combined with the
       # cosign signature in the next step, consumers can audit provenance:
-      #   cosign tree   ghcr.io/eightoeight/fp-runtime:php8.3
-      #   cosign verify ghcr.io/eightoeight/fp-runtime:php8.3 \
-      #     --certificate-identity-regexp '^https://github.com/EightOEight/fp-runtime/' \
+      #   cosign tree   ghcr.io/frankenpress/runtime:php8.3
+      #   cosign verify ghcr.io/frankenpress/runtime:php8.3 \
+      #     --certificate-identity-regexp '^https://github.com/frankenpress/runtime/' \
       #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
       #
       # Note: syft scans whichever platform the runner pulls (linux/amd64
