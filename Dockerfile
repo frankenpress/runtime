@@ -24,8 +24,17 @@ ARG CADDY_CBROTLI_VERSION=v1.0.1
 # that supplies its own mu-plugins via composer install).
 ARG FP_MU_PLUGIN_VERSION="v0.1.1"
 
+# Base image manifest digests for `dunglas/frankenphp:${FRANKENPHP_VERSION}-(builder-)php${PHP_VERSION}`.
+# Pinning to digest catches upstream-tag-recycle and supply-chain compromise.
+# Empty default → tag-only fallback (allows local `docker build` against
+# whatever the tag currently resolves to). CI passes the matrix-correct
+# digest per PHP version. Refresh via the recipe in CLAUDE.md when bumping
+# FRANKENPHP_VERSION.
+ARG FRANKENPHP_BUILDER_DIGEST=""
+ARG FRANKENPHP_RUNTIME_DIGEST=""
+
 # ---------- Builder ----------
-FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php${PHP_VERSION} AS builder
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-builder-php${PHP_VERSION}${FRANKENPHP_BUILDER_DIGEST} AS builder
 
 COPY --from=caddy:builder /usr/bin/xcaddy /usr/bin/xcaddy
 
@@ -49,7 +58,7 @@ RUN CGO_ENABLED=1 \
         --with github.com/darkweak/storages/go-redis/caddy@${STORAGES_GO_REDIS_VERSION}
 
 # ---------- Runtime ----------
-FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION} AS runtime
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION}${FRANKENPHP_RUNTIME_DIGEST} AS runtime
 
 COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 
@@ -82,10 +91,16 @@ RUN install-php-extensions \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# wp-cli for cron + admin tasks. Pinned by SHA256 to avoid drift.
+# wp-cli for cron + admin tasks. Pinned by version AND verified by SHA256
+# against a build-arg-supplied hash. Refresh both ARGs together when bumping
+# (recipe in CLAUDE.md). Hash check happens BEFORE chmod / exec, so a
+# tampered download fails the build loudly instead of producing a broken
+# image.
 ARG WP_CLI_VERSION=2.12.0
+ARG WP_CLI_SHA256=ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c
 RUN curl -fsSL -o /usr/local/bin/wp \
         "https://github.com/wp-cli/wp-cli/releases/download/v${WP_CLI_VERSION}/wp-cli-${WP_CLI_VERSION}.phar" \
+    && echo "${WP_CLI_SHA256}  /usr/local/bin/wp" | sha256sum -c - \
     && chmod +x /usr/local/bin/wp \
     && wp --info --allow-root >/dev/null
 
@@ -106,6 +121,18 @@ RUN if [ -n "$FP_MU_PLUGIN_VERSION" ]; then \
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY php.ini /usr/local/etc/php/conf.d/runtime.ini
 COPY web /app/web
+
+# Opt-in JIT. Off by default until ARM64 tracing-JIT stability is verified
+# against a real workload (the well-known PHP arm64 JIT bugs in 8.3.x are
+# fixed upstream but we haven't soaked our specific image yet). Set
+# `--build-arg ENABLE_JIT=1` to enable. Appends to runtime.ini AFTER the
+# base settings so the JIT lines take precedence over any local opcache
+# overrides in consumer images.
+ARG ENABLE_JIT=0
+RUN if [ "${ENABLE_JIT}" = "1" ]; then \
+        printf '\n; JIT enabled at build time via ENABLE_JIT=1\nopcache.jit = tracing\nopcache.jit_buffer_size = 64M\n' \
+            >>/usr/local/etc/php/conf.d/runtime.ini; \
+    fi
 
 WORKDIR /app
 

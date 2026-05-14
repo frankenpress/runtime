@@ -36,6 +36,7 @@ Public docs: **<https://docs.frankenpress.com/components/runtime>**
 - **Caddyfile env vars are documented at the top of the file.** When adding a new env var, document it there too — it's the single source of truth.
 - **Baseline security headers (HSTS, `nosniff`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`) are set in a single `header` block** in the public server. They apply to cache HIT and MISS responses identically. Per-site overrides land via a wrapping Caddyfile that re-declares the header (later directives win) or a WP plugin's `send_headers` hook (PHP-set headers pass through `php_server`).
 - **`expose_php = Off` in `php.ini`** kills `X-Powered-By: PHP/<version>`. Keep it off; the header is pure info leak with no client benefit.
+- **Opcache JIT is opt-in via `--build-arg ENABLE_JIT=1`** — default off. The well-known PHP 8.3.x tracing-JIT bugs on ARM64 are fixed upstream, but we haven't soaked our specific (FrankenPHP-embedded) build against a real workload yet. Enable per-image when you're ready to test; the appended JIT block lands in `runtime.ini` after the base opcache settings so consumer overrides still compose correctly.
 
 ## Don'ts
 
@@ -55,6 +56,38 @@ make ci             # build + up + cache-spike + down
 make build          # just rebuild runtime:dev
 make size           # report compressed image size (~221 MB target)
 ```
+
+## Bumping `FRANKENPHP_VERSION`
+
+The Dockerfile `FROM` lines pin to a manifest digest *in addition* to the tag — `@sha256:<x>` is appended to each base image. The tag stays in the reference for readability; the digest is what's enforced. Two stages × three PHP variants = six digests live in `.github/workflows/build.yml` under the `Resolve FrankenPHP base-image digests` step.
+
+When bumping the version, regenerate the table before pushing the tag bump:
+
+```bash
+NEW=1.13.0   # or whatever you're bumping to
+for php in 8.3 8.4 8.5; do
+  for stage in builder-php php; do
+    tag="dunglas/frankenphp:${NEW}-${stage}${php}"
+    digest=$(docker buildx imagetools inspect "$tag" 2>/dev/null \
+              | awk '/^Digest:/ {print $2; exit}')
+    printf '  %s → %s\n' "$tag" "$digest"
+  done
+done
+```
+
+Paste the six values into the `case "${{ matrix.php }}"` block in `build.yml`. The build will fail loudly (the `default: exit 1` branch) if a PHP version surfaces without a pinned digest — that's deliberate. Empty Dockerfile defaults mean a local `docker build .` still works without the workflow, just tag-only (acceptable for dev, not for releases).
+
+## Bumping `WP_CLI_VERSION`
+
+The Dockerfile verifies the downloaded `.phar` against `WP_CLI_SHA256` *before* `chmod +x`. Refresh both ARGs together:
+
+```bash
+NEW=2.13.0
+curl -fsSL "https://github.com/wp-cli/wp-cli/releases/download/v${NEW}/wp-cli-${NEW}.phar" \
+  | sha256sum
+```
+
+Set `WP_CLI_VERSION` and `WP_CLI_SHA256` defaults in the Dockerfile to match. A mismatched hash fails the build with `sha256sum: WARNING: 1 computed checksum did NOT match` — investigate before assuming benign drift.
 
 ## When you bump a public env var or build arg
 

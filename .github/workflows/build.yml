@@ -65,6 +65,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # FrankenPHP base-image manifest digests for FRANKENPHP_VERSION=1.12.2.
+      # Refresh both the table here AND the matching defaults in
+      # `Dockerfile` (none — Dockerfile defaults are empty for local-build
+      # ergonomics) whenever FRANKENPHP_VERSION bumps. Recipe in CLAUDE.md
+      # under "Bumping FRANKENPHP_VERSION".
+      - name: Resolve FrankenPHP base-image digests
+        id: digests
+        run: |
+          set -euo pipefail
+          case "${{ matrix.php }}" in
+            8.3)
+              BUILDER="@sha256:e1a497cdca13bfd4a77a3020975e9572eca37e9f6e2ed8dc8f8f1432818fa3e3"
+              RUNTIME="@sha256:2312c80fb71a1ed48c62f66d0bda76a243e87c2d6432226b19f11d36b31aeafc"
+              ;;
+            8.4)
+              BUILDER="@sha256:7a46a71a2a36eb4dd42ce6fe0d6f0509a0c110f7313708b3ca56df8320931cfd"
+              RUNTIME="@sha256:a3f58635bcf573a8d373630404fb3bbbf72e1434380da699e593788d584f97a9"
+              ;;
+            8.5)
+              BUILDER="@sha256:5399d15c2ca3a5f16f23266164527c10951e393183bd97622e406f7543500eb1"
+              RUNTIME="@sha256:da8a979de55fc4a1f1445e043ac1cab275bb85c0cf9f82d7964ad901ed7bad58"
+              ;;
+            *)
+              echo "::error::no digest pinned for PHP ${{ matrix.php }} — refresh the table in build.yml" >&2
+              exit 1
+              ;;
+          esac
+          echo "builder=${BUILDER}" >>"$GITHUB_OUTPUT"
+          echo "runtime=${RUNTIME}" >>"$GITHUB_OUTPUT"
+
       - name: Build (load locally for testing)
         uses: docker/build-push-action@v5
         with:
@@ -78,6 +108,8 @@ jobs:
             SOURCE_COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
             IMAGE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
+            FRANKENPHP_BUILDER_DIGEST=${{ steps.digests.outputs.builder }}
+            FRANKENPHP_RUNTIME_DIGEST=${{ steps.digests.outputs.runtime }}
 
       - name: Run cache-spike integration test
         env:
@@ -111,6 +143,8 @@ jobs:
             SOURCE_COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
             IMAGE_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
+            FRANKENPHP_BUILDER_DIGEST=${{ steps.digests.outputs.builder }}
+            FRANKENPHP_RUNTIME_DIGEST=${{ steps.digests.outputs.runtime }}
           cache-from: type=gha,scope=php${{ matrix.php }}-${{ matrix.arch }}
           cache-to: type=gha,scope=php${{ matrix.php }}-${{ matrix.arch }},mode=max
 
