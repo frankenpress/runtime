@@ -112,14 +112,23 @@ WORKDIR /app
 EXPOSE 8080 9145
 
 # OCI labels for supply-chain hygiene. Override these via build args in CI.
+# `image.url` is the canonical "where do I find more info" URL — required by
+# Syft, Grype, and Kubernetes admission controllers that surface OCI metadata
+# in their UIs. `image.version` distinguishes per-build artifacts (tag name
+# on tagged builds, commit SHA on branch builds); paired with `image.revision`
+# (always the SHA) it satisfies both human-readable and machine-resolvable
+# version queries.
 ARG SOURCE_COMMIT=""
 ARG BUILD_DATE=""
+ARG IMAGE_VERSION=""
 LABEL org.opencontainers.image.title="runtime" \
       org.opencontainers.image.description="FrankenPress runtime — Caddy + FrankenPHP + Souin for WordPress on Kubernetes" \
+      org.opencontainers.image.url="https://github.com/frankenpress/runtime" \
       org.opencontainers.image.source="https://github.com/frankenpress/runtime" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="FrankenPress" \
       org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]

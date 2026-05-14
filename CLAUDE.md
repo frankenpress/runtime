@@ -34,15 +34,19 @@ Public docs: **<https://docs.frankenpress.com/components/runtime>**
 - **Cap_net_bind_service is stripped from the frankenphp binary** (`setcap -r` after the COPY). We bind `FP_PORT=8080` (high port); the cap was unused and made the binary unexecutable under `no_new_privs`. **Don't reintroduce it.**
 - **mu-plugin is baked at `/app/web/app/mu-plugins/fp/`** by default. The bake step downloads the tarball for `FP_MU_PLUGIN_VERSION` (defaults to a specific tag, e.g. `v0.1.1`). Pass an empty string to skip baking when the consumer site composer-installs it themselves.
 - **Caddyfile env vars are documented at the top of the file.** When adding a new env var, document it there too — it's the single source of truth.
+- **Baseline security headers (HSTS, `nosniff`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`) are set in a single `header` block** in the public server. They apply to cache HIT and MISS responses identically. Per-site overrides land via a wrapping Caddyfile that re-declares the header (later directives win) or a WP plugin's `send_headers` hook (PHP-set headers pass through `php_server`).
+- **`expose_php = Off` in `php.ini`** kills `X-Powered-By: PHP/<version>`. Keep it off; the header is pure info leak with no client benefit.
 
 ## Don'ts
 
 - **Don't add nginx, php-fpm, or supervisord.** This is a single-process FrankenPHP container by design. The whole point of FrankenPress is one process per pod.
 - **Don't add `XCADDY_SETCAP=1` back without also removing the `setcap -r` line.** They're contradictory and produce a binary the kernel refuses to exec under `no_new_privs`.
 - **Don't add memcached as a Souin storage backend.** Souin/cache-handler doesn't support it. Redis (or anything RESP-compatible like DragonflyDB) is the only supported option.
-- **Don't change the cache key shape (`GET-<scheme>-<host>-<path>`)** without coordinating with `mu-plugin`'s `SouinInvalidator`. The mu-plugin DELs Redis keys directly using this exact prefix; a change here breaks invalidation silently.
+- **Don't change the cache key shape (`GET-<scheme>-<host>-<path>`)** without coordinating with `mu-plugin`'s `SouinInvalidator`. The mu-plugin DELs Redis keys directly using this exact prefix; a change here breaks invalidation silently. The full architecture + invalidation hook coverage + May 2026 bug chronology lives in [`mu-plugin/.aidocs/cache-architecture.md`](https://github.com/frankenpress/mu-plugin/blob/main/.aidocs/cache-architecture.md) — read it before any cache-shaped debugging.
 - **Don't make breaking changes to `FP_*` env var names** in a patch release. They're a public contract — sites + the Helm chart depend on them.
 - **Don't drop `tests/cache-spike.sh` even if you're refactoring.** It's the runtime image's only integration test and CI gates on it.
+- **Don't add `X-Powered-By` back** for any reason. `expose_php = Off` is deliberate.
+- **Don't relax the baseline security headers.** `X-Frame-Options: SAMEORIGIN` is the loosest setting WP admin needs (Customizer iframes the front end on the same host); changing it to `DENY` breaks Customizer, but anything weaker (none, ALLOW-FROM, frame-ancestors `*`) loses clickjacking protection cluster-wide.
 
 ## Local testing
 

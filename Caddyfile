@@ -122,6 +122,36 @@
 
 	encode zstd br gzip
 
+	# Baseline security headers, applied to every response (cache HIT
+	# and MISS alike — Caddy emits these after the cache handler
+	# returns). Override per-site by setting the same header from an
+	# extending Caddyfile or via a WP plugin's `send_headers` hook;
+	# Caddy's later directives win, and PHP-set headers ride through
+	# `php_server` to the client untouched.
+	#
+	#   Strict-Transport-Security        only effective on HTTPS, harmless
+	#                                    over plain HTTP; emit unconditionally
+	#                                    so the TLS terminator upstream passes
+	#                                    it through to the browser.
+	#   X-Content-Type-Options nosniff   blocks MIME-sniffing — a vector for
+	#                                    polyglot upload attacks against
+	#                                    misconfigured Content-Type.
+	#   Referrer-Policy                  strict-origin-when-cross-origin
+	#                                    is the modern browser default;
+	#                                    setting it explicitly stops
+	#                                    older clients from leaking full
+	#                                    URLs cross-origin.
+	#   X-Frame-Options SAMEORIGIN       clickjacking guard. SAMEORIGIN
+	#                                    rather than DENY so WP admin
+	#                                    can still iframe Customizer
+	#                                    previews on the same host.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		X-Frame-Options           "SAMEORIGIN"
+	}
+
 	# Access logs as JSON to stdout. One line per request — picked up by
 	# any cluster log shipper that tails container stdout. The metrics
 	# server below is intentionally left unlogged.
@@ -136,11 +166,13 @@
 
 	# .php whitelist: only WordPress entry points may execute PHP. Defends
 	# against malicious uploads landing in the docroot. WP entry-point list
-	# is conservative; extend per-site if a plugin needs additional ones
-	# (e.g. wp-comments-post.php, xmlrpc.php for legacy clients).
+	# covers the core endpoints a stock WordPress install needs; extend
+	# per-site if a plugin needs additional ones (e.g. xmlrpc.php for
+	# legacy clients). `wp-comments-post.php` is core (the form action for
+	# `<form>` comment submissions) — included unconditionally.
 	@bad_php {
 		path *.php
-		not path /index.php /wp-login.php /wp-cron.php /wp-admin/*.php /wp/index.php /wp/wp-login.php /wp/wp-cron.php /wp/wp-admin/*.php
+		not path /index.php /wp-login.php /wp-cron.php /wp-comments-post.php /wp-admin/*.php /wp/index.php /wp/wp-login.php /wp/wp-cron.php /wp/wp-comments-post.php /wp/wp-admin/*.php
 	}
 
 	# Mutually-exclusive handle blocks — first match wins, regardless of

@@ -142,6 +142,25 @@ SURROGATE_<tag>                set of cache keys for a given Surrogate-Key tag
 Bulk tag-based invalidation: read `SURROGATE_<tag>` (a Redis SET), then
 pipeline-DEL all members. Sub-millisecond.
 
+## Security headers
+
+Every response on `FP_PORT` carries a baseline set:
+
+| Header | Value | Why |
+|---|---|---|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Force HTTPS for one year. Harmless over plain HTTP — browsers only honour it on HTTPS responses; emitted unconditionally so the upstream TLS terminator passes it through. |
+| `X-Content-Type-Options` | `nosniff` | Blocks MIME-sniffing — a vector for polyglot upload attacks against misconfigured `Content-Type`. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Stops older clients from leaking full URLs cross-origin. |
+| `X-Frame-Options` | `SAMEORIGIN` | Clickjacking guard. `SAMEORIGIN` rather than `DENY` so WP admin can still iframe Customizer previews on the same host. |
+
+`X-Powered-By: PHP/<version>` is **never emitted** — `expose_php = Off`
+in `php.ini`.
+
+To override per-site, set the same header from a wrapping Caddyfile (later
+directives win), or via a WP plugin's `send_headers` hook (PHP-set headers
+ride through `php_server` to the client untouched). The headers fire after
+the cache handler, so cache HIT and MISS responses are header-identical.
+
 ## Local development
 
 ```bash
